@@ -64,7 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
     document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}`
-    router.push('/todos')
+    console.log('Login successful, redirecting to /todos...')
+    // Use window.location for production reliability
+    if (typeof window !== 'undefined') {
+      window.location.href = '/todos'
+    } else {
+      router.push('/todos')
+    }
   }
 
   const signup = async (email: string, password: string) => {
