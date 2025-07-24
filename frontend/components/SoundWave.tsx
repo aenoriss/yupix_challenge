@@ -7,7 +7,7 @@ interface SoundWaveProps {
 
 export function SoundWave({ isActive, audioLevel = 0 }: SoundWaveProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     if (!canvasRef.current) return

@@ -237,7 +237,7 @@ export function CategoryManager() {
                             className="h-6 w-6 rounded ring-2 ring-offset-1 transition-all hover:scale-110"
                             style={{ 
                               backgroundColor: color,
-                              ringColor: editColor === color ? color : 'transparent'
+                              boxShadow: editColor === color ? `0 0 0 2px ${color}` : undefined
                             }}
                             onClick={() => setEditColor(color)}
                           />

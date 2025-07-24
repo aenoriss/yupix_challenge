@@ -41,7 +41,7 @@ export function TodoItem({ id, text, completed, dueDate, category, onToggle, onD
   // Determine if we should animate
   const shouldAnimate = isInitialRender || (!hasRenderedBefore.current && !hasAnimated)
   
-  const style = {
+  const style: React.CSSProperties = {
     transform: isToggling && completed ? 
       `${CSS.Transform.toString(transform)} translateX(20px)` : 
       CSS.Transform.toString(transform),
@@ -49,7 +49,7 @@ export function TodoItem({ id, text, completed, dueDate, category, onToggle, onD
     opacity: isDragging ? 0.5 : 1,
     animationDelay: shouldAnimate ? `${200 + (index * 50)}ms` : isToggling ? '0ms' : '0ms',
     zIndex: isToggling ? 50 : isDragging ? 40 : 'auto',
-    position: isToggling ? 'relative' : undefined,
+    position: isToggling ? 'relative' as const : undefined,
   }
 
   useEffect(() => {

@@ -374,11 +374,6 @@ export function useRealtimeAI() {
         console.log('Audio playback ended at:', new Date().toISOString())
       }
       
-      // Add error handler
-      source.onerror = (error) => {
-        console.error('Audio source error:', error)
-      }
-      
       console.log('Starting audio playback...')
       console.log('Buffer duration:', audioBuffer.duration, 'seconds')
       console.log('Context state:', audioPlayerRef.current.state)
@@ -391,7 +386,9 @@ export function useRealtimeAI() {
       audioChunksRef.current = []
     } catch (error) {
       console.error('Error playing audio:', error)
-      console.error('Error stack:', error.stack)
+      if (error instanceof Error) {
+        console.error('Error stack:', error.stack)
+      }
       // Clear chunks even on error to prevent accumulation
       audioChunksRef.current = []
     }
