@@ -47,8 +47,10 @@ export function useRealtimeAI() {
       return
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-    const wsUrl = apiUrl.replace(/^http/, 'ws')
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+    // Remove /api from URL for WebSocket connection since WS endpoint is at /ws/realtime not /api/ws/realtime
+    const baseUrl = apiUrl.replace(/\/api$/, '')
+    const wsUrl = baseUrl.replace(/^http/, 'ws')
     const ws = new WebSocket(`${wsUrl}/ws/realtime`)
     wsRef.current = ws
 
