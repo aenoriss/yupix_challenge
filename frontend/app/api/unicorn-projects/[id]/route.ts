@@ -4,10 +4,10 @@ import path from 'path'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id
+    const { id: projectId } = await params
     
     if (projectId === 'ai-orb') {
       const filePath = path.join(process.cwd(), 'public', 'AI Orb.json')
