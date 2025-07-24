@@ -40,7 +40,9 @@ export function AIModal({ open, onOpenChange }: AIModalProps) {
     isMuted,
     toggleMute,
     hasRecordedAudio,
-    audioLevel
+    audioLevel,
+    testAudioPlayback,
+    initAudioContext
   } = useRealtimeAI()
 
   useEffect(() => {
@@ -53,6 +55,12 @@ export function AIModal({ open, onOpenChange }: AIModalProps) {
       }
     }
   }, [open, connected, connect, disconnect])
+  
+  useEffect(() => {
+    if (open) {
+      initAudioContext()
+    }
+  }, [open, initAudioContext])
 
   useEffect(() => {
     if (transcript) {

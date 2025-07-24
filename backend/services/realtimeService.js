@@ -341,9 +341,6 @@ User: ${data.text}`
             return
           }
           
-          // Log audio chunk info
-          console.log('Appending audio chunk, base64 length:', data.audio.length)
-          
           // Convert base64 to ArrayBuffer for appendInputAudio
           const binaryString = atob(data.audio)
           const bytes = new Uint8Array(binaryString.length)

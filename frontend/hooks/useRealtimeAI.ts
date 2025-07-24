@@ -28,6 +28,18 @@ export function useRealtimeAI() {
   const isRecordingRef = useRef(false)
   const isMutedRef = useRef(false)
 
+  const initAudioContext = useCallback(async () => {
+    if (!audioPlayerRef.current) {
+      audioPlayerRef.current = new AudioContext()
+    }
+    
+    if (audioPlayerRef.current.state === 'suspended') {
+      await audioPlayerRef.current.resume()
+    }
+    
+    console.log('Audio context initialized:', audioPlayerRef.current.state)
+  }, [])
+
   const connect = useCallback(async () => {
     const token = localStorage.getItem('token')
     if (!token) {
@@ -45,6 +57,9 @@ export function useRealtimeAI() {
     ws.onmessage = (event) => {
       try {
         const message: RealtimeMessage = JSON.parse(event.data)
+        
+        // Log all message types
+        console.log('WebSocket message type:', message.type)
         
         switch (message.type) {
         case 'auth_success':
@@ -74,37 +89,97 @@ export function useRealtimeAI() {
           
         case 'response.audio.delta':
           if (message.data?.delta) {
-            console.log('Received audio delta, length:', message.data.delta.length)
-            audioChunksRef.current.push(message.data.delta)
+            // Convert object with numeric keys to array
+            let audioData = message.data.delta
+            
+            if (typeof audioData === 'object' && !Array.isArray(audioData)) {
+              // Convert object {0: val1, 1: val2, ...} to array [val1, val2, ...]
+              const keys = Object.keys(audioData).map(k => parseInt(k)).sort((a, b) => a - b)
+              const maxKey = keys[keys.length - 1]
+              const array = new Array(maxKey + 1)
+              for (let i = 0; i <= maxKey; i++) {
+                array[i] = audioData[i] || 0
+              }
+              audioData = array
+              console.log('Converted object to array, length:', array.length)
+            }
+            
+            audioChunksRef.current.push(audioData)
+            console.log('Total chunks so far:', audioChunksRef.current.length)
           }
           break
           
         case 'response.audio.done':
-          console.log('Audio done, chunks collected:', audioChunksRef.current.length, 'muted:', isMuted)
-          // Use ref to get current mute state
-          const currentIsMuted = isMutedRef.current
-          console.log('Current mute state from ref:', currentIsMuted)
-          if (!currentIsMuted && audioChunksRef.current.length > 0) {
-            playAudio()
+          console.log('=== AUDIO DONE ===')
+          console.log('Chunks collected:', audioChunksRef.current.length)
+          console.log('Is muted (state):', isMuted)
+          console.log('Is muted (ref):', isMutedRef.current)
+          
+          if (audioChunksRef.current.length > 0) {
+            // Calculate total samples
+            let totalSamples = 0
+            audioChunksRef.current.forEach(chunk => {
+              if (Array.isArray(chunk)) {
+                totalSamples += chunk.length
+              }
+            })
+            console.log('Total audio samples:', totalSamples)
+            console.log('Duration (seconds):', totalSamples / 24000)
           }
-          audioChunksRef.current = []
+          
+          if (!isMutedRef.current && audioChunksRef.current.length > 0) {
+            console.log('>>> PLAYING AUDIO <<<')
+            playAudio().then(() => {
+              console.log('PlayAudio completed')
+            }).catch(error => {
+              console.error('Error in playAudio:', error)
+            })
+          } else if (audioChunksRef.current.length === 0) {
+            console.log('No audio chunks to play')
+          } else {
+            console.log('Audio is muted, clearing chunks')
+            audioChunksRef.current = []
+          }
           break
           
         case 'response.done':
           setIsProcessing(false)
+          
+          // Play audio if we have chunks
+          console.log('=== RESPONSE DONE ===')
+          console.log('Chunks collected:', audioChunksRef.current.length)
+          console.log('Is muted (ref):', isMutedRef.current)
+          
+          if (audioChunksRef.current.length > 0) {
+            // Calculate total samples
+            let totalSamples = 0
+            audioChunksRef.current.forEach(chunk => {
+              if (Array.isArray(chunk)) {
+                totalSamples += chunk.length
+              }
+            })
+            console.log('Total audio samples:', totalSamples)
+            console.log('Duration (seconds):', totalSamples / 24000)
+            
+            if (!isMutedRef.current) {
+              console.log('>>> PLAYING AUDIO <<<')
+              playAudio().then(() => {
+                console.log('PlayAudio completed')
+              }).catch(error => {
+                console.error('Error in playAudio:', error)
+              })
+            } else {
+              console.log('Audio is muted, clearing chunks')
+              audioChunksRef.current = []
+            }
+          }
           break
           
         case 'user_transcript':
           if (message.data?.transcript) {
-            // Accumulate transcript
-            setTranscript(prev => {
-              // If it's a completely new transcript (not just adding to existing)
-              if (message.data.transcript.length > prev.length + 10) {
-                return message.data.transcript
-              }
-              // Otherwise append
-              return prev + message.data.transcript
-            })
+            console.log('Received user transcript:', message.data.transcript)
+            // Set transcript directly
+            setTranscript(message.data.transcript)
           }
           break
           
@@ -163,6 +238,7 @@ export function useRealtimeAI() {
     if (wsRef.current && connected && !isProcessing && hasRecordedAudio) {
       // Clear previous state
       setResponse('')
+      setTranscript('') // Clear transcript after sending
       setIsProcessing(true)
       audioChunksRef.current = []
       setHasRecordedAudio(false)
@@ -174,6 +250,12 @@ export function useRealtimeAI() {
   
   const playAudio = useCallback(async () => {
     console.log('playAudio called, chunks:', audioChunksRef.current.length)
+    console.log('Current mute state:', isMutedRef.current)
+    
+    if (isMutedRef.current) {
+      console.log('Audio is muted, skipping playback')
+      return
+    }
     
     if (!audioPlayerRef.current) {
       audioPlayerRef.current = new AudioContext()
@@ -189,52 +271,129 @@ export function useRealtimeAI() {
     console.log('AudioContext sample rate:', audioPlayerRef.current.sampleRate)
     
     try {
-      // Combine all audio chunks
-      const combinedBase64 = audioChunksRef.current.join('')
-      console.log('Combined base64 length:', combinedBase64.length)
-      console.log('First chunk preview:', audioChunksRef.current[0]?.substring(0, 50))
+      // Check what format we have
+      const firstChunk = audioChunksRef.current[0]
+      let float32: Float32Array
       
-      const binaryString = atob(combinedBase64)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
+      if (Array.isArray(firstChunk) || (typeof firstChunk === 'object' && firstChunk !== null)) {
+        // Chunks are arrays of PCM16 samples (or objects converted to arrays)
+        console.log('Processing PCM16 arrays, chunks:', audioChunksRef.current.length)
+        
+        // Calculate total length
+        let totalLength = 0
+        audioChunksRef.current.forEach(chunk => {
+          if (Array.isArray(chunk)) {
+            totalLength += chunk.length
+          }
+        })
+        
+        console.log('Total PCM16 samples:', totalLength)
+        
+        // Combine all chunks into one array
+        const combined = new Int16Array(totalLength)
+        let offset = 0
+        audioChunksRef.current.forEach(chunk => {
+          if (Array.isArray(chunk)) {
+            combined.set(chunk, offset)
+            offset += chunk.length
+          }
+        })
+        
+        // Convert to Float32
+        float32 = new Float32Array(combined.length)
+        for (let i = 0; i < combined.length; i++) {
+          float32[i] = combined[i] / 32768.0
+        }
+        
+        console.log('Combined samples:', float32.length)
+      } else if (typeof firstChunk === 'string') {
+        // Chunks are base64 strings
+        console.log('Processing base64 strings')
+        
+        const combinedBase64 = audioChunksRef.current.join('')
+        const binaryString = atob(combinedBase64)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        
+        const dataView = new DataView(bytes.buffer)
+        float32 = new Float32Array(bytes.length / 2)
+        
+        for (let i = 0; i < float32.length; i++) {
+          const sample = dataView.getInt16(i * 2, true)
+          float32[i] = sample / 32768.0
+        }
+      } else {
+        console.error('Unknown chunk format:', typeof firstChunk)
+        audioChunksRef.current = []
+        return
       }
       
-      console.log('Binary data length:', bytes.length)
-      console.log('First few bytes:', Array.from(bytes.slice(0, 10)))
-      
-      // Convert PCM16 to Float32
-      const pcm16 = new Int16Array(bytes.buffer)
-      const float32 = new Float32Array(pcm16.length)
-      
+      // Check audio data
       let maxVal = 0
       let minVal = 0
-      for (let i = 0; i < pcm16.length; i++) {
-        float32[i] = pcm16[i] / 32768.0
+      let hasNonZero = false
+      
+      for (let i = 0; i < float32.length; i++) {
         maxVal = Math.max(maxVal, float32[i])
         minVal = Math.min(minVal, float32[i])
+        if (float32[i] !== 0) hasNonZero = true
       }
       
       console.log('Audio data range:', minVal, 'to', maxVal)
+      console.log('Has non-zero samples:', hasNonZero)
       console.log('Creating audio buffer, samples:', float32.length, 'duration:', float32.length / 24000, 'seconds')
+      
+      if (!hasNonZero) {
+        console.warn('Audio data is all zeros - no sound will be heard')
+      }
       
       // Create audio buffer and play
       const audioBuffer = audioPlayerRef.current.createBuffer(1, float32.length, 24000)
       audioBuffer.copyToChannel(float32, 0)
       
+      console.log('Audio buffer created:', {
+        duration: audioBuffer.duration,
+        length: audioBuffer.length,
+        sampleRate: audioBuffer.sampleRate,
+        numberOfChannels: audioBuffer.numberOfChannels
+      })
+      
       const source = audioPlayerRef.current.createBufferSource()
       source.buffer = audioBuffer
-      source.connect(audioPlayerRef.current.destination)
+      
+      // Add gain node for volume control
+      const gainNode = audioPlayerRef.current.createGain()
+      gainNode.gain.value = 1.0
+      
+      source.connect(gainNode)
+      gainNode.connect(audioPlayerRef.current.destination)
       
       source.onended = () => {
-        console.log('Audio playback ended')
+        console.log('Audio playback ended at:', new Date().toISOString())
       }
       
-      source.start()
+      // Add error handler
+      source.onerror = (error) => {
+        console.error('Audio source error:', error)
+      }
+      
+      console.log('Starting audio playback...')
+      console.log('Buffer duration:', audioBuffer.duration, 'seconds')
+      console.log('Context state:', audioPlayerRef.current.state)
+      
+      source.start(0)
       console.log('Audio started playing at:', new Date().toISOString())
+      console.log('Destination max channel count:', audioPlayerRef.current.destination.maxChannelCount)
+      
+      // Clear chunks after successfully starting playback
+      audioChunksRef.current = []
     } catch (error) {
       console.error('Error playing audio:', error)
       console.error('Error stack:', error.stack)
+      // Clear chunks even on error to prevent accumulation
+      audioChunksRef.current = []
     }
   }, [])
   
@@ -245,6 +404,39 @@ export function useRealtimeAI() {
       console.log('Toggled mute state to:', newMutedState)
       return newMutedState
     })
+  }, [])
+
+  const testAudioPlayback = useCallback(async () => {
+    console.log('Testing audio playback...')
+    
+    if (!audioPlayerRef.current) {
+      audioPlayerRef.current = new AudioContext()
+    }
+    
+    if (audioPlayerRef.current.state === 'suspended') {
+      await audioPlayerRef.current.resume()
+    }
+    
+    try {
+      const oscillator = audioPlayerRef.current.createOscillator()
+      const gainNode = audioPlayerRef.current.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioPlayerRef.current.destination)
+      
+      oscillator.frequency.value = 440
+      gainNode.gain.value = 0.3 // Increased volume
+      
+      oscillator.start()
+      oscillator.stop(audioPlayerRef.current.currentTime + 0.5)
+      
+      console.log('Test tone played successfully')
+      console.log('AudioContext state:', audioPlayerRef.current.state)
+      console.log('AudioContext sampleRate:', audioPlayerRef.current.sampleRate)
+      console.log('System volume check - can you hear the beep?')
+    } catch (error) {
+      console.error('Error playing test tone:', error)
+    }
   }, [])
 
   const startRecording = useCallback(async () => {
@@ -302,7 +494,7 @@ export function useRealtimeAI() {
       
       setIsRecording(true)
       isRecordingRef.current = true
-      setTranscript('') // Clear previous transcript
+      // Don't clear transcript immediately - wait for new transcription
       setResponse('')
       setHasRecordedAudio(false)
       
@@ -333,6 +525,10 @@ export function useRealtimeAI() {
   }, [])
 
   useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  useEffect(() => {
     return () => {
       disconnect()
     }
@@ -353,6 +549,8 @@ export function useRealtimeAI() {
     isMuted,
     toggleMute,
     hasRecordedAudio,
-    audioLevel
+    audioLevel,
+    testAudioPlayback,
+    initAudioContext
   }
 }
