@@ -135,7 +135,7 @@ export function CategoryManager() {
                     className="h-8 w-8 rounded-md ring-2 ring-offset-2 transition-all hover:scale-110"
                     style={{ 
                       backgroundColor: color,
-                      ringColor: newCategoryColor === color ? color : 'transparent'
+                      boxShadow: newCategoryColor === color ? `0 0 0 2px ${color}` : undefined
                     }}
                     onClick={() => setNewCategoryColor(color)}
                   />
